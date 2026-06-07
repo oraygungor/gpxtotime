@@ -1,361 +1,461 @@
-<!DOCTYPE html>
-<html lang="tr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ultra Simülatör: GAP & Yorgunluk (Gelişmiş)</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
-    
-    <style>
-        :root {
-            --primary-color: #e67e22; --primary-hover: #d35400;
-            --background-gradient: linear-gradient(135deg, #2c3e50, #4ca1af);
-            --card-background: rgba(255, 255, 255, 0.98); --text-dark: #2c3e50;
-            --text-light: #7f8c8d; --border-color: #e0e0e0;
-            --success-color: #27ae60; --error-color: #c0392b;
-            --info-bg: #ecf0f1; --disabled-bg: #bdc3c7;
-        }
-        body {
-            font-family: 'Poppins', sans-serif; background: var(--background-gradient); color: var(--text-dark);
-            display: flex; justify-content: center; align-items: flex-start; min-height: 100vh;
-            margin: 0; padding: 40px 20px; box-sizing: border-box;
-        }
-        .container {
-            background-color: var(--card-background); backdrop-filter: blur(10px);
-            padding: 40px; border-radius: 20px; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
-            width: 100%; max-width: 600px; text-align: center; border: 1px solid rgba(255,255,255,0.2);
-        }
-        .header { display: flex; flex-direction: column; align-items: center; margin-bottom: 20px; }
-        .header svg { width: 50px; height: 50px; color: var(--primary-color); margin-bottom: 10px; }
-        h1 { margin: 0; font-size: 28px; font-weight: 700; }
-        .subtitle { color: var(--text-light); margin-top: 5px; margin-bottom: 30px; }
-        .form-group { margin-bottom: 25px; text-align: left; }
-        label { display: block; font-weight: 600; margin-bottom: 8px; font-size: 14px; color: var(--text-dark); }
-        input[type="datetime-local"], input[type="text"] {
-            width: 100%; padding: 12px 15px; border: 1px solid var(--border-color); border-radius: 8px;
-            box-sizing: border-box; font-size: 16px; font-family: 'Poppins', sans-serif;
-            transition: border-color 0.3s, box-shadow 0.3s;
-        }
-        input:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 3px rgba(230, 126, 34, 0.2); }
-        
-        /* Custom File Input */
-        .file-input-wrapper { position: relative; }
-        input[type="file"] { position: absolute; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
-        .file-input-label {
-            display: flex; align-items: center; justify-content: center; width: 100%; padding: 12px 15px;
-            border: 2px dashed var(--border-color); border-radius: 8px; box-sizing: border-box;
-            font-size: 16px; font-family: 'Poppins', sans-serif; transition: all 0.3s;
-            background-color: #f8f9fa; color: var(--text-light);
-        }
-        .file-input-wrapper:hover .file-input-label { border-color: var(--primary-color); background-color: #fff; }
-        #file-name { color: var(--primary-color); font-weight: 600; margin-left: 10px; }
+<script>
+    // --- DOM Elementleri ---
+    const gpxFileInput = document.getElementById('gpx-file');
+    const fileNameSpan = document.getElementById('file-name');
+    const startTimeInput = document.getElementById('start-time');
+    const paceInput = document.getElementById('pace');
+    const processBtn = document.getElementById('process-btn');
+    const statusDiv = document.getElementById('status');
+    const resultsDiv = document.getElementById('results');
+    const allInputs = [gpxFileInput, startTimeInput, paceInput];
+    const btnText = document.getElementById('btn-text');
 
-        /* Advanced Settings */
-        details { margin-top: 30px; border: 1px solid var(--border-color); border-radius: 8px; padding: 5px; }
-        summary {
-            font-weight: 600; color: var(--primary-color); cursor: pointer; padding: 15px;
-            list-style: none; position: relative;
+    // Gelişmiş Ayarlar
+    const fatigueFactorSlider = document.getElementById('fatigue-factor');
+    const fatigueFactorValue = document.getElementById('fatigue-factor-value');
+    const fatigueThresholdSlider = document.getElementById('fatigue-threshold');
+    const fatigueThresholdValue = document.getElementById('fatigue-threshold-value');
+    const gradeSensitivitySlider = document.getElementById('grade-sensitivity');
+    const gradeSensitivityValue = document.getElementById('grade-sensitivity-value');
+
+    function haversineDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371e3;
+        const phi1 = lat1 * Math.PI / 180;
+        const phi2 = lat2 * Math.PI / 180;
+        const dPhi = (lat2 - lat1) * Math.PI / 180;
+        const dLambda = (lon2 - lon1) * Math.PI / 180;
+
+        const a =
+            Math.sin(dPhi / 2) * Math.sin(dPhi / 2) +
+            Math.cos(phi1) * Math.cos(phi2) *
+            Math.sin(dLambda / 2) * Math.sin(dLambda / 2);
+
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    function updateStatus(message, type) {
+        statusDiv.textContent = message;
+        statusDiv.className = type;
+    }
+
+    function setLoading(isLoading) {
+        if (isLoading) {
+            processBtn.classList.add('loading');
+            processBtn.disabled = true;
+            btnText.textContent = "Simülasyon Çalışıyor...";
+            allInputs.forEach(input => input.disabled = true);
+        } else {
+            processBtn.classList.remove('loading');
+            processBtn.disabled = false;
+            btnText.textContent = "Simülasyonu Başlat";
+            allInputs.forEach(input => input.disabled = false);
         }
-        summary::-webkit-details-marker { display: none; }
-        summary::after {
-            content: '▶'; position: absolute; right: 20px;
-            transform: rotate(0deg); transition: transform 0.2s;
-        }
-        details[open] summary::after { transform: rotate(90deg); }
-        .details-content { padding: 0 15px 15px; }
-        .slider-group { display: flex; align-items: center; gap: 15px; margin-top: 15px; }
-        .slider-group label { flex-shrink: 0; margin-bottom: 0; }
-        .slider-group input[type="range"] { flex-grow: 1; }
-        .slider-group .slider-value { font-weight: 600; min-width: 50px; text-align: right; }
+    }
 
-        /* Button & Status */
-        button#process-btn {
-            width: 100%; padding: 15px; background-color: var(--primary-color); color: white; border: none;
-            border-radius: 8px; font-size: 18px; font-weight: 600; cursor: pointer; margin-top: 15px;
-            transition: background-color 0.3s, transform 0.2s; display: flex; justify-content: center; align-items: center; gap: 10px;
-        }
-        button#process-btn:hover:not(:disabled) { background-color: var(--primary-hover); transform: translateY(-2px); }
-        button#process-btn:disabled { background-color: var(--disabled-bg); cursor: not-allowed; }
-        #btn-spinner { display: none; width: 20px; height: 20px; border: 3px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 1s linear infinite; }
-        button#process-btn.loading #btn-spinner { display: block; }
-        button#process-btn.loading #btn-text { display: none; }
-        @keyframes spin { to { transform: rotate(360deg); } }
+    function displayResults(stats) {
+        document.getElementById('result-distance').textContent =
+            `${(stats.totalDistance / 1000).toFixed(2)} km`;
 
-        /* Results & Status */
-        #status { margin-top: 25px; font-weight: 600; min-height: 22px; transition: color 0.3s; }
-        #status.success { color: var(--success-color); } #status.error { color: var(--error-color); } #status.info { color: var(--text-light); }
-        
-        #results {
-            margin-top: 25px; padding: 20px; background-color: var(--info-bg);
-            border-radius: 8px; text-align: left; display: none;
-            border-left: 4px solid var(--success-color);
-        }
-        #results h4 { margin: 0 0 15px 0; color: var(--text-dark); font-weight: 700; }
-        .result-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border-color); }
-        .result-item:last-child { border-bottom: none; }
-        .result-item span:first-child { font-weight: 600; }
-        .result-item span:last-child { color: var(--primary-color); font-weight: 600; }
-    </style>
-</head>
-<body>
-    <main class="container">
-        <div class="header">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M17.334 20.334a1.5 1.5 0 0 1-2.122 0l-3.212-3.212a1.5 1.5 0 0 1 0-2.122L15.334 11.5a1.5 1.5 0 0 1 2.122 0l3.212 3.212a1.5 1.5 0 0 1 0 2.122l-3.334 3.5ZM9 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm3.5 1.646a.5.5 0 0 0-.5-.5h-2a.5.5 0 0 0 0 1h1.146L2.354 13.854a.5.5 0 0 0 0 .708l1.414 1.414a.5.5 0 0 0 .708 0L13.5 7.08V12.5a.5.5 0 0 0 1 0V4a.5.5 0 0 0-.5-.5Z"/></svg>
-            <h1>Ultra Simülatör</h1>
-        </div>
-        <p class="subtitle">Eğime ve yorgunluğa göre ayarlanmış, gerçekçi bir GPX dosyası oluşturun.</p>
-        
-        <div class="form-group">
-            <label for="gpx-file">1. GPX Dosyası</label>
-            <div class="file-input-wrapper">
-                <input type="file" id="gpx-file" accept=".gpx">
-                <div class="file-input-label">
-                    <span>Dosya Seçin veya Sürükleyin</span>
-                    <span id="file-name"></span>
-                </div>
-            </div>
-        </div>
-        
-        <div class="form-group">
-            <label for="start-time">2. Başlangıç Zamanı</label>
-            <input type="datetime-local" id="start-time">
-        </div>
-        
-        <div class="form-group">
-            <label for="pace">3. GAP (Düz Zemindeki Pace, DD:SS / km)</label>
-            <input type="text" id="pace" value="06:00" placeholder="DD:SS">
-        </div>
-        
-        <details>
-            <summary>Gelişmiş Ayarlar</summary>
-            <div class="details-content">
-                <div class="slider-group">
-                    <label for="fatigue-factor">Yorgunluk Etkisi (%):</label>
-                    <input type="range" id="fatigue-factor" min="0" max="20" value="5" step="0.5">
-                    <span class="slider-value" id="fatigue-factor-value">5%</span>
-                </div>
-                <div class="slider-group">
-                    <label for="fatigue-threshold">Yorgunluk Eşiği (m):</label>
-                    <input type="range" id="fatigue-threshold" min="250" max="2000" value="1000" step="50">
-                    <span class="slider-value" id="fatigue-threshold-value">1000m</span>
-                </div>
-                <div class="slider-group">
-                    <label for="grade-sensitivity">Eğim Hassasiyeti:</label>
-                    <input type="range" id="grade-sensitivity" min="0.5" max="1.5" value="1" step="0.05">
-                    <span class="slider-value" id="grade-sensitivity-value">1.0x</span>
-                </div>
-            </div>
-        </details>
+        document.getElementById('result-elevation').textContent =
+            `${Math.round(stats.totalElevationGain)} m`;
 
-        <button id="process-btn">
-            <span id="btn-text">Simülasyonu Başlat</span>
-            <div id="btn-spinner"></div>
-        </button>
-        <div id="status" class="info">Başlamak için bilgileri girin ve dosyayı seçin.</div>
-        
-        <div id="results">
-            <h4>📊 Simülasyon Sonuçları</h4>
-            <div class="result-item">
-                <span>Toplam Mesafe:</span>
-                <span id="result-distance">--</span>
-            </div>
-            <div class="result-item">
-                <span>Toplam İrtifa Kazancı:</span>
-                <span id="result-elevation">--</span>
-            </div>
-            <div class="result-item">
-                <span>Simüle Edilmiş Süre:</span>
-                <span id="result-time">--</span>
-            </div>
-        </div>
-    </main>
+        const hours = Math.floor(stats.totalSeconds / 3600);
+        const minutes = Math.floor((stats.totalSeconds % 3600) / 60);
+        const seconds = Math.round(stats.totalSeconds % 60);
 
-    <script>
-        // --- DOM Elementleri ---
-        const gpxFileInput = document.getElementById('gpx-file');
-        const fileNameSpan = document.getElementById('file-name');
-        const startTimeInput = document.getElementById('start-time');
-        const paceInput = document.getElementById('pace');
-        const processBtn = document.getElementById('process-btn');
-        const statusDiv = document.getElementById('status');
-        const resultsDiv = document.getElementById('results');
-        const allInputs = [gpxFileInput, startTimeInput, paceInput];
-        const btnText = document.getElementById('btn-text');
+        document.getElementById('result-time').textContent =
+            `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 
-        // Gelişmiş Ayarlar
-        const fatigueFactorSlider = document.getElementById('fatigue-factor');
-        const fatigueFactorValue = document.getElementById('fatigue-factor-value');
-        const fatigueThresholdSlider = document.getElementById('fatigue-threshold');
-        const fatigueThresholdValue = document.getElementById('fatigue-threshold-value');
-        const gradeSensitivitySlider = document.getElementById('grade-sensitivity');
-        const gradeSensitivityValue = document.getElementById('grade-sensitivity-value');
+        resultsDiv.style.display = 'block';
+    }
 
-        // --- Yardımcı Fonksiyonlar ---
-        function haversineDistance(lat1, lon1, lat2, lon2) {
-            const R = 6371e3; // Metre
-            const φ1 = lat1 * Math.PI / 180, φ2 = lat2 * Math.PI / 180;
-            const Δφ = (lat2 - lat1) * Math.PI / 180, Δλ = (lon2 - lon1) * Math.PI / 180;
-            const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    function parsePaceToSeconds(value) {
+        const paceMatch = value.match(/^(\d+):(\d{1,2})$/);
+        if (!paceMatch) throw new Error("Pace formatı geçersiz. DD:SS kullanın.");
+
+        const min = parseInt(paceMatch[1], 10);
+        const sec = parseInt(paceMatch[2], 10);
+
+        if (sec >= 60) throw new Error("Saniye kısmı 60'tan küçük olmalı.");
+
+        return min * 60 + sec;
+    }
+
+    function getEle(point) {
+        const ele = point.querySelector('ele');
+        if (!ele) return null;
+        const value = parseFloat(ele.textContent);
+        return Number.isFinite(value) ? value : null;
+    }
+
+    function getLatLon(point) {
+        return {
+            lat: parseFloat(point.getAttribute('lat')),
+            lon: parseFloat(point.getAttribute('lon'))
+        };
+    }
+
+    function clamp(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    /*
+      Strava-benzeri GAP modeli.
+
+      Fit edilen model:
+          predicted_gap = actual_pace * factor
+
+      Simülasyonda kullanıcı GAP verdiği için tersini kullanıyoruz:
+          actual_pace = target_gap / factor
+
+      Model 2 katsayıları, Strava GPX testinden:
+          MAE yaklaşık 15.72 sec/km
+    */
+    function stravaLikeGapFactor(features, gradeSensitivity) {
+        const g = features.netGrade;
+
+        const up = Math.max(g, 0);
+        const down = Math.max(-g, 0);
+
+        const up2 = up * up;
+        const down2 = down * down;
+        const up3 = up2 * up;
+        const down3 = down2 * down;
+
+        const gainPerKm = features.gainPerKm;
+        const lossPerKm = features.lossPerKm;
+        const absElevPerKm = features.absElevPerKm;
+        const meanAbsGrade = features.meanAbsGrade;
+
+        let factor =
+            1.058695149940
+            + 0.616602629267 * up
+            + 0.616608003250 * down
+            + 10.412694441045 * up2
+            - 9.204482896199 * down2
+            - 8.190857426290 * up3
+            + 7.966588935701 * down3
+            - 0.003543832395 * gainPerKm
+            + 0.001830148975 * lossPerKm
+            - 0.001713683443 * absElevPerKm
+            - 0.131627201332 * meanAbsGrade;
+
+        /*
+          gradeSensitivity:
+          1.00 = fit edilen katsayılar
+          0.50 = düzeltmeyi yarıya yaklaştırır
+          1.50 = düzeltmeyi artırır
+
+          factor 1'e yaklaştıkça düz zemin davranışı olur.
+        */
+        factor = 1 + (factor - 1) * gradeSensitivity;
+
+        /*
+          Güvenlik sınırı:
+          Çok dik / bozuk GPX segmentlerinde absürt pace üretmesin.
+          factor düşükse actual_pace = GAP / factor çok yavaşlar.
+          factor yüksekse actual_pace çok hızlanır.
+        */
+        factor = clamp(factor, 0.35, 1.80);
+
+        return factor;
+    }
+
+    function buildSegments(trackpoints) {
+        const segments = [];
+        let cumulativeDistance = 0;
+
+        for (let i = 1; i < trackpoints.length; i++) {
+            const prev = trackpoints[i - 1];
+            const curr = trackpoints[i];
+
+            const p1 = getLatLon(prev);
+            const p2 = getLatLon(curr);
+
+            const distanceMeters = haversineDistance(p1.lat, p1.lon, p2.lat, p2.lon);
+
+            const ele1 = getEle(prev);
+            const ele2 = getEle(curr);
+            const elevationChange = (ele1 !== null && ele2 !== null) ? ele2 - ele1 : 0;
+
+            const startDistance = cumulativeDistance;
+            cumulativeDistance += distanceMeters;
+
+            segments.push({
+                index: i,
+                startPointIndex: i - 1,
+                endPointIndex: i,
+                startDistance,
+                endDistance: cumulativeDistance,
+                distanceMeters,
+                elevationChange,
+                timeDeltaSeconds: 0,
+                blockIndex: null
+            });
         }
 
-        function updateStatus(message, type) {
-            statusDiv.textContent = message;
-            statusDiv.className = type;
-        }
+        return segments;
+    }
 
-        function setLoading(isLoading) {
-            if (isLoading) {
-                processBtn.classList.add('loading');
-                processBtn.disabled = true;
-                btnText.textContent = "Simülasyon Çalışıyor...";
-                allInputs.forEach(input => input.disabled = true);
-            } else {
-                processBtn.classList.remove('loading');
-                processBtn.disabled = false;
-                btnText.textContent = "Simülasyonu Başlat";
-                allInputs.forEach(input => input.disabled = false);
-            }
-        }
+    function buildOneKmBlocks(segments) {
+        const blocks = [];
+        let currentBlockStart = 0;
+        const totalDistance = segments.length ? segments[segments.length - 1].endDistance : 0;
 
-        function displayResults(stats) {
-            document.getElementById('result-distance').textContent = `${(stats.totalDistance / 1000).toFixed(2)} km`;
-            document.getElementById('result-elevation').textContent = `${Math.round(stats.totalElevationGain)} m`;
-            
-            const hours = Math.floor(stats.totalSeconds / 3600);
-            const minutes = Math.floor((stats.totalSeconds % 3600) / 60);
-            const seconds = Math.round(stats.totalSeconds % 60);
-            document.getElementById('result-time').textContent = 
-                `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-            
-            resultsDiv.style.display = 'block';
-        }
+        while (currentBlockStart < totalDistance) {
+            const currentBlockEnd = Math.min(currentBlockStart + 1000, totalDistance);
 
-        // --- Ana Simülasyon Fonksiyonu ---
-        async function processGpx() {
-            // 1. Girdileri Doğrula
-            const file = gpxFileInput.files[0];
-            if (!file) { updateStatus("Lütfen bir GPX dosyası seçin.", "error"); return; }
-            if (!startTimeInput.value) { updateStatus("Lütfen bir başlangıç zamanı girin.", "error"); return; }
-            
-            let userGapInSeconds;
-            try {
-                const paceMatch = paceInput.value.match(/^(\d+):(\d{1,2})$/);
-                if (!paceMatch) throw new Error();
-                userGapInSeconds = parseInt(paceMatch[1], 10) * 60 + parseInt(paceMatch[2], 10);
-            } catch (e) {
-                updateStatus("Pace formatı geçersiz. Lütfen DD:SS formatını kullanın.", "error"); return;
+            let distance = 0;
+            let netElevation = 0;
+            let gain = 0;
+            let loss = 0;
+            let absElevation = 0;
+            let weightedAbsGradeSum = 0;
+
+            const segmentRefs = [];
+
+            for (const seg of segments) {
+                if (seg.endDistance <= currentBlockStart) continue;
+                if (seg.startDistance >= currentBlockEnd) break;
+
+                const overlapStart = Math.max(seg.startDistance, currentBlockStart);
+                const overlapEnd = Math.min(seg.endDistance, currentBlockEnd);
+                const overlapDistance = overlapEnd - overlapStart;
+
+                if (overlapDistance <= 0 || seg.distanceMeters <= 0) continue;
+
+                const ratio = overlapDistance / seg.distanceMeters;
+                const de = seg.elevationChange * ratio;
+
+                distance += overlapDistance;
+                netElevation += de;
+
+                if (de > 0) gain += de;
+                if (de < 0) loss += -de;
+
+                absElevation += Math.abs(de);
+
+                const localGrade = de / overlapDistance;
+                weightedAbsGradeSum += Math.abs(localGrade) * overlapDistance;
+
+                segmentRefs.push(seg);
             }
 
-            setLoading(true);
-            updateStatus("Simülasyon başlatılıyor, lütfen bekleyin...", "info");
-            resultsDiv.style.display = 'none';
+            const distanceKm = distance / 1000;
 
-            try {
-                // 2. GPX Dosyasını Oku ve Ayrıştır
-                const xmlDoc = new DOMParser().parseFromString(await file.text(), "application/xml");
-                if (xmlDoc.getElementsByTagName("parsererror").length > 0) throw new Error("GPX dosyası hatalı veya okunamıyor.");
+            const features = {
+                distanceMeters: distance,
+                distanceKm,
+                netElevation,
+                gain,
+                loss,
+                absElevation,
+                netGrade: distance > 0 ? netElevation / distance : 0,
+                gainPerKm: distanceKm > 0 ? gain / distanceKm : 0,
+                lossPerKm: distanceKm > 0 ? loss / distanceKm : 0,
+                absElevPerKm: distanceKm > 0 ? absElevation / distanceKm : 0,
+                meanAbsGrade: distance > 0 ? weightedAbsGradeSum / distance : 0
+            };
 
-                const trackpoints = xmlDoc.querySelectorAll('trkpt');
-                if (trackpoints.length < 2) throw new Error("Dosyada en az 2 rota noktası bulunmalı.");
-                
-                // 3. Simülasyon Ayarlarını Al
-                const fatigueSlowdown = parseFloat(fatigueFactorSlider.value) / 100;
-                const fatigueThreshold = parseFloat(fatigueThresholdSlider.value);
-                const gradeSensitivity = parseFloat(gradeSensitivitySlider.value);
+            const block = {
+                startDistance: currentBlockStart,
+                endDistance: currentBlockEnd,
+                features,
+                segmentRefs,
+                factor: 1,
+                actualPaceSecPerKm: 0
+            };
 
-                // 4. Simülasyonu Çalıştır
-                let currentTime = new Date(startTimeInput.value);
-                let cumulativeElevationGain = 0;
-                let totalDistance = 0;
-                let totalSeconds = 0;
-                const hasElevation = trackpoints[0].querySelector('ele') !== null;
-                
-                if (!hasElevation) updateStatus("Uyarı: Yükseklik verisi bulunamadı. Eğim ve yorgunluk hesaplanmayacak.", "info");
+            const blockIndex = blocks.length;
+            for (const seg of segmentRefs) {
+                seg.blockIndex = blockIndex;
+            }
 
-                for (let i = 0; i < trackpoints.length; i++) {
-                    const point = trackpoints[i];
-                    if (point.querySelector('time')) point.querySelector('time').remove();
+            blocks.push(block);
+            currentBlockStart = currentBlockEnd;
+        }
 
-                    let timeDeltaSeconds = 0;
-                    if (i > 0) {
-                        const prevPoint = trackpoints[i - 1];
-                        const distanceMeters = haversineDistance(
-                            parseFloat(prevPoint.getAttribute('lat')), parseFloat(prevPoint.getAttribute('lon')),
-                            parseFloat(point.getAttribute('lat')), parseFloat(point.getAttribute('lon'))
-                        );
-                        totalDistance += distanceMeters;
-                        
-                        const fatigueFactor = 1 + (fatigueSlowdown * Math.floor(cumulativeElevationGain / fatigueThreshold));
-                        let paceForSegment = userGapInSeconds * fatigueFactor;
+        return blocks;
+    }
 
-                        if (hasElevation && distanceMeters > 0.1) {
-                            const elevationChange = parseFloat(point.querySelector('ele').textContent) - parseFloat(prevPoint.querySelector('ele').textContent);
-                            if (elevationChange > 0) {
-                                cumulativeElevationGain += elevationChange;
-                            }
-                            
-                            const slopePercent = (elevationChange / distanceMeters) * 100;
-                            const gradeAdjustment = (0.4934 * Math.pow(slopePercent, 2) + 7.6514 * slopePercent) * gradeSensitivity;
-                            
-                            paceForSegment += gradeAdjustment;
-                            paceForSegment = Math.max(120, paceForSegment); // Min pace 2:00/km
-                        }
-                        timeDeltaSeconds = (distanceMeters / 1000) * paceForSegment;
-                    }
-                    
-                    currentTime = new Date(currentTime.getTime() + timeDeltaSeconds * 1000);
-                    totalSeconds += timeDeltaSeconds;
-                    
-                    const timeEl = xmlDoc.createElement('time');
-                    timeEl.textContent = currentTime.toISOString();
-                    const eleEl = point.querySelector('ele');
-                    eleEl ? eleEl.after(timeEl) : point.appendChild(timeEl);
+    async function processGpx() {
+        const file = gpxFileInput.files[0];
+
+        if (!file) {
+            updateStatus("Lütfen bir GPX dosyası seçin.", "error");
+            return;
+        }
+
+        if (!startTimeInput.value) {
+            updateStatus("Lütfen bir başlangıç zamanı girin.", "error");
+            return;
+        }
+
+        let targetGapSeconds;
+        try {
+            targetGapSeconds = parsePaceToSeconds(paceInput.value);
+        } catch (e) {
+            updateStatus(e.message, "error");
+            return;
+        }
+
+        setLoading(true);
+        updateStatus("Simülasyon başlatılıyor, lütfen bekleyin...", "info");
+        resultsDiv.style.display = 'none';
+
+        try {
+            let fileText = await file.text();
+
+            /*
+              Bazı GPX dosyalarında iki XML deklarasyonu olabiliyor.
+              DOMParser bunu sevmez. Gerçek <gpx> kökünden başlatıyoruz.
+            */
+            const gpxStart = fileText.search(/<gpx\b/i);
+            if (gpxStart >= 0) {
+                fileText = fileText.slice(gpxStart);
+            }
+
+            const xmlDoc = new DOMParser().parseFromString(fileText, "application/xml");
+
+            if (xmlDoc.getElementsByTagName("parsererror").length > 0) {
+                throw new Error("GPX dosyası hatalı veya okunamıyor.");
+            }
+
+            const trackpoints = Array.from(xmlDoc.querySelectorAll('trkpt'));
+
+            if (trackpoints.length < 2) {
+                throw new Error("Dosyada en az 2 rota noktası bulunmalı.");
+            }
+
+            const hasElevation = trackpoints.some(p => p.querySelector('ele') !== null);
+
+            if (!hasElevation) {
+                updateStatus("Uyarı: Yükseklik verisi bulunamadı. Eğim hesaplanmayacak.", "info");
+            }
+
+            const fatigueSlowdown = parseFloat(fatigueFactorSlider.value) / 100;
+            const fatigueThreshold = parseFloat(fatigueThresholdSlider.value);
+            const gradeSensitivity = parseFloat(gradeSensitivitySlider.value);
+
+            const segments = buildSegments(trackpoints);
+            const blocks = buildOneKmBlocks(segments);
+
+            let cumulativeElevationGain = 0;
+            let totalDistance = 0;
+            let totalSeconds = 0;
+            let currentTime = new Date(startTimeInput.value);
+
+            for (const point of trackpoints) {
+                const oldTime = point.querySelector('time');
+                if (oldTime) oldTime.remove();
+            }
+
+            for (const block of blocks) {
+                const factor = hasElevation ? stravaLikeGapFactor(block.features, gradeSensitivity) : 1;
+
+                const fatigueMultiplier =
+                    1 + (fatigueSlowdown * Math.floor(cumulativeElevationGain / fatigueThreshold));
+
+                /*
+                  Kullanıcı GAP verdi.
+                  Model: GAP = actual_pace * factor
+                  Bu yüzden actual_pace = GAP / factor.
+                */
+                block.factor = factor;
+                block.actualPaceSecPerKm = (targetGapSeconds / factor) * fatigueMultiplier;
+
+                /*
+                  Segmentlere blok pace'i uygula.
+                  Gain'i blok bazında topluyoruz ki yorgunluk daha stabil olsun.
+                */
+                for (const seg of block.segmentRefs) {
+                    const seconds = (seg.distanceMeters / 1000) * block.actualPaceSecPerKm;
+                    seg.timeDeltaSeconds = seconds;
+
+                    totalDistance += seg.distanceMeters;
+                    totalSeconds += seconds;
                 }
-                
-                // 5. Yeni GPX Dosyasını Oluştur ve İndir
-                const newGpxText = '<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(xmlDoc);
-                const blob = new Blob([newGpxText], { type: 'application/gpx+xml;charset=utf-8' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.style.display = 'none';
-                a.href = url;
-                a.download = file.name.replace(/\.gpx$/i, '_simulasyon.gpx'); // <-- DEĞİŞİKLİK BURADA
-                document.body.appendChild(a);
-                a.click();
-                URL.revokeObjectURL(url);
-                document.body.removeChild(a);
-                
-                updateStatus(`Başarılı! "${a.download}" adlı dosya indirildi.`, "success");
-                displayResults({ totalDistance: totalDistance, totalElevationGain: cumulativeElevationGain, totalSeconds: totalSeconds });
 
-            } catch (error) {
-                console.error("Simülasyon Hatası:", error);
-                updateStatus(`Hata: ${error.message}`, "error");
-            } finally {
-                setLoading(false);
+                cumulativeElevationGain += block.features.gain;
             }
+
+            /*
+              GPX time etiketlerini yeniden yaz.
+              İlk noktaya başlangıç zamanı, sonraki noktalara kümülatif zaman.
+            */
+            const firstTimeEl = xmlDoc.createElement('time');
+            firstTimeEl.textContent = currentTime.toISOString();
+
+            const firstEleEl = trackpoints[0].querySelector('ele');
+            firstEleEl ? firstEleEl.after(firstTimeEl) : trackpoints[0].appendChild(firstTimeEl);
+
+            for (const seg of segments) {
+                currentTime = new Date(currentTime.getTime() + seg.timeDeltaSeconds * 1000);
+
+                const point = trackpoints[seg.endPointIndex];
+                const timeEl = xmlDoc.createElement('time');
+                timeEl.textContent = currentTime.toISOString();
+
+                const eleEl = point.querySelector('ele');
+                eleEl ? eleEl.after(timeEl) : point.appendChild(timeEl);
+            }
+
+            const newGpxText =
+                '<?xml version="1.0" encoding="UTF-8"?>\n' +
+                new XMLSerializer().serializeToString(xmlDoc);
+
+            const blob = new Blob([newGpxText], { type: 'application/gpx+xml;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = file.name.replace(/\.gpx$/i, '_simulasyon_strava_gap.gpx');
+
+            document.body.appendChild(a);
+            a.click();
+
+            URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+
+            updateStatus(`Başarılı! "${a.download}" adlı dosya indirildi.`, "success");
+
+            displayResults({
+                totalDistance,
+                totalElevationGain: cumulativeElevationGain,
+                totalSeconds
+            });
+
+        } catch (error) {
+            console.error("Simülasyon Hatası:", error);
+            updateStatus(`Hata: ${error.message}`, "error");
+        } finally {
+            setLoading(false);
         }
+    }
 
-        // --- Olay Dinleyicileri (Event Listeners) ---
-        window.addEventListener('load', () => {
-            const now = new Date();
-            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-            startTimeInput.value = now.toISOString().slice(0, 16);
-        });
-        
-        gpxFileInput.addEventListener('change', () => {
-            fileNameSpan.textContent = gpxFileInput.files.length > 0 ? gpxFileInput.files[0].name : '';
-        });
+    window.addEventListener('load', () => {
+        const now = new Date();
+        now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+        startTimeInput.value = now.toISOString().slice(0, 16);
+    });
 
-        // Slider değerlerini anlık göster
-        fatigueFactorSlider.addEventListener('input', (e) => fatigueFactorValue.textContent = `${e.target.value}%`);
-        fatigueThresholdSlider.addEventListener('input', (e) => fatigueThresholdValue.textContent = `${e.target.value}m`);
-        gradeSensitivitySlider.addEventListener('input', (e) => gradeSensitivityValue.textContent = `${parseFloat(e.target.value).toFixed(2)}x`);
+    gpxFileInput.addEventListener('change', () => {
+        fileNameSpan.textContent =
+            gpxFileInput.files.length > 0 ? gpxFileInput.files[0].name : '';
+    });
 
-        processBtn.addEventListener('click', processGpx);
-    </script>
-</body>
-</html>
+    fatigueFactorSlider.addEventListener('input', (e) => {
+        fatigueFactorValue.textContent = `${e.target.value}%`;
+    });
+
+    fatigueThresholdSlider.addEventListener('input', (e) => {
+        fatigueThresholdValue.textContent = `${e.target.value}m`;
+    });
+
+    gradeSensitivitySlider.addEventListener('input', (e) => {
+        gradeSensitivityValue.textContent = `${parseFloat(e.target.value).toFixed(2)}x`;
+    });
+
+    processBtn.addEventListener('click', processGpx);
+</script>
